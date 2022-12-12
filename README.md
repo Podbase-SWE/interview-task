@@ -13,7 +13,7 @@ Here are the resources we would like you to read before jumping to the code:
 
 1. Pull the repository. 
 2. Create a branch `<YOUR_FULL_NAME>` (e.g. `John_Sandwich`).
-3. Clean it up  🧹 
+3. Clean it up  🧹.
 4. Make a pull request. 
 
 <br> 
