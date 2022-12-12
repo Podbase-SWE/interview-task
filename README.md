@@ -15,8 +15,9 @@ Here are the resources we would like you to read before jumping to the code:
 2. Create a branch `<YOUR_FULL_NAME>` (e.g. `John_Sandwich`).
 3. Clean it up  🧹.
 4. Make a pull request. 
+5. Let us know!
 
 <br> 
 
 Best of luck , 
-**Podbase**!
+**Podbase**.
