@@ -1,151 +1,184 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
-import { QueryRef } from 'apollo-angular';
-import { untilDestroyed } from 'ngx-take-until-destroy';
-import { first } from 'rxjs/operators';
-
+import { Component, OnDestroy, OnInit } from "@angular/core";
+import { QueryRef } from "apollo-angular";
+import { untilDestroyed } from "ngx-take-until-destroy";
+import { first } from "rxjs/operators";
+import { Subscription } from "rxjs";
 import {
   AllBlogPostsGQL,
   AllBlogPostsQuery,
   AllBlogPostsQueryVariables,
   BlogPost,
   Pagination,
-} from '@pb-graphql';
-import { SeoService } from '@pb-services';
+} from "@pb-graphql";
+import { SeoService } from "@pb-services";
+
+import {
+  SEARCH_RESULTS,
+  RECENT_POSTS,
+  CATEGORY_POSTS,
+  CATEGORY_SUFFIX,
+} from "./page-title.constants";
+import { ALL_CATEGORIES } from "./category.constants";
+import { queryModel } from "./query.model";
 
 @Component({
-  selector: 'pb-page-blog',
-  templateUrl: './page-blog.component.html',
-  styleUrls: ['./page-blog.component.scss'],
+  selector: "pb-page-blog",
+  templateUrl: "./page-blog.component.html",
+  styleUrls: ["./page-blog.component.scss"],
 })
 export class PageBlogComponent implements OnInit, OnDestroy {
+  private _subscription = new Subscription();
+
   posts: BlogPost[];
   paginationData: Pagination;
   featuredPosts: BlogPost[];
   categories: string[];
 
-  selectedCategory = 'All Categories';
-  searchQuery = ''; // Private, public - no idea.
+  selectedCategory = ALL_CATEGORIES;
 
-  pageTitle: string;
+  pageTitle = "";
   pageIndex = 0;
 
   readonly pageSize = 3;
 
-  private allBlogPostsQuery: QueryRef<AllBlogPostsQuery, AllBlogPostsQueryVariables>;
-  private searchTimer: any;
+  private _searchQuery = "";
+  private _allBlogPostsQuery: QueryRef<
+    AllBlogPostsQuery,
+    AllBlogPostsQueryVariables
+  >;
+  private _searchTimer: any;
 
-  constructor(private seo: SeoService, private allBlogPostsGQL: AllBlogPostsGQL) {}
+  constructor(
+    private readonly _seo: SeoService,
+    private readonly _allBlogPostsGQL: AllBlogPostsGQL
+  ) {}
 
-  ngOnInit() {
+  ngOnInit(): void {
     // Big boy makaroon
-    this.allBlogPostsQuery = this.allBlogPostsGQL.watch(
-      this.getQuery({
+    this._allBlogPostsQuery = this._allBlogPostsGQL.watch(
+      this._getQuery({
         initialLoad: true,
-      }),
+      })
     );
 
-    this.allBlogPostsQuery.valueChanges
-      .pipe(first(({ data }) => !!data.featuredBlogPosts))
-      .subscribe(({ data }) => {
-        this.featuredPosts = data.featuredBlogPosts;
-        this.categories = ['All Categories', ...data.blogCategories];
-      });
+    this._subscription.add(this._subscribeToBlogPosts());
+    this._subscription.add(this._subscribeToBlogPostsUntilDestroyed());
 
-    this.allBlogPostsQuery.valueChanges.pipe(untilDestroyed(this)).subscribe(({ data }) => {
-      this.paginationData = data.response.pagination;
-      this.posts = data.response.items;
-      this.setPageTitle();
-    });
-
-    this.setPageTitle();
-    this.setMetaTags();
+    this._setPageTitle();
+    this._setMetaTags();
   }
 
-  public ngOnDestroy() {}
-
-  searchPosts() {
-    clearTimeout(this.searchTimer);
-    this.searchTimer = setTimeout(() => this.filterPosts(), 1000);
+  ngOnDestroy(): void {
+    this._subscription.unsubscribe();
   }
 
-  filterPosts() {
-    this.allBlogPostsQuery.refetch(this.getQuery()).then(() => {
+  searchPosts(): void {
+    clearTimeout(this._searchTimer);
+    this._searchTimer = setTimeout(() => this.filterPosts(), 1000);
+  }
+
+  filterPosts(): void {
+    this._allBlogPostsQuery.refetch(this._getQuery()).then(() => {
       this.pageIndex = 0;
     });
   }
 
-  prevPage() {
-    this.setPageIndex(-1);
+  prevPage(): void {
+    this._setPageIndex(-1);
   }
 
-  nextPage() {
-    this.setPageIndex(1);
+  nextPage(): void {
+    this._setPageIndex(1);
   }
 
-  private setPageIndex(skipPages: number) {
+  setQuery(query: string): void {
+    this._searchQuery = query;
+  }
+
+  private _subscribeToBlogPosts(): Subscription {
+    return this._allBlogPostsQuery.valueChanges
+      .pipe(first(({ data }) => !!data.featuredBlogPosts))
+      .subscribe(({ data }) => {
+        this.featuredPosts = data.featuredBlogPosts;
+        this.categories = [ALL_CATEGORIES, ...data.blogCategories];
+      });
+  }
+
+  // naming could be improved
+  private _subscribeToBlogPostsUntilDestroyed(): Subscription {
+    return this._allBlogPostsQuery.valueChanges
+      .pipe(untilDestroyed(this))
+      .subscribe(({ data }) => {
+        this.paginationData = data.response.pagination;
+        this.posts = data.response.items;
+        this._setPageTitle();
+      });
+  }
+
+  private _setPageIndex(skipPages: number): void {
     this.pageIndex += skipPages;
-    this.allBlogPostsQuery.refetch(
-      this.getQuery({
+    this._allBlogPostsQuery.refetch(
+      this._getQuery({
         skipPages,
-      }),
+      })
     );
   }
 
-  private getQuery({
+  private _getQuery({
     initialLoad = false,
     skipPages,
   }: {
     initialLoad?: boolean;
     skipPages?: number;
-  } = {}) {
-    // No return type? 
+  } = {}): queryModel {
     return {
       withSummary: true,
       withCategories: initialLoad,
       withFeaturedPosts: initialLoad,
       input: {
         pagination: {
-          skipPages,
+          skipPages: skipPages ? skipPages : 0,
           pageSize: this.pageSize,
-          firstItemOnPage: this.paginationData && this.paginationData.firstItemOnPage,
-          lastItemOnPage: this.paginationData && this.paginationData.lastItemOnPage,
+          firstItemOnPage:
+            this.paginationData && this.paginationData.firstItemOnPage,
+          lastItemOnPage:
+            this.paginationData && this.paginationData.lastItemOnPage,
         },
         sorting: [
           {
-            name: 'date',
+            name: "date",
             asc: false,
           },
         ],
         filter: {
           categories:
-            this.selectedCategory === 'All Categories'
-              ? this.categories
-              : this.selectedCategory && [this.selectedCategory],
-          search: this.searchQuery,
+            this.selectedCategory && this.selectedCategory !== ALL_CATEGORIES
+              ? [this.selectedCategory]
+              : this.categories,
+          search: this._searchQuery,
         },
       },
     };
   }
 
-  private setPageTitle() {
-    if (this.searchQuery) {
-      if (this.selectedCategory === 'All Categories') {
-        this.pageTitle = 'Search Results';
-      } else {
-        this.pageTitle = `Search Results in Category '${this.selectedCategory}'`;
-      }
-    } else if (this.selectedCategory === 'All Categories') {
-      this.pageTitle = 'Recent Posts';
+  private _setPageTitle(): void {
+    if (this._searchQuery) {
+      this.pageTitle =
+        SEARCH_RESULTS + this.selectedCategory !== ALL_CATEGORIES
+          ? `${CATEGORY_SUFFIX} ${this.selectedCategory}`
+          : "";
+    } else if (this.selectedCategory === ALL_CATEGORIES) {
+      this.pageTitle = RECENT_POSTS;
     } else {
-      this.pageTitle = `Posts in Category '${this.selectedCategory}'`;
+      this.pageTitle = `${CATEGORY_POSTS} '${this.selectedCategory}'`;
     }
     // https://pbs.twimg.com/media/DAw0TC1XkAE1Tr4.jpg
   }
 
-  private setMetaTags() {
-    this.seo.setPageMeta({
-      title: 'Blog',
-      description: 'The Podbase blog - news, advice and other articles',
+  private _setMetaTags(): void {
+    this._seo.setPageMeta({
+      title: "Blog",
+      description: "The Podbase blog - news, advice and other articles",
     });
   }
 }
